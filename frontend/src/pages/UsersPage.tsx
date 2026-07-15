@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
-import {
-  getUsers,
-  updateUserRole,
-} from "../services/userApi";
+import { useUpdateUserRoleMutation } from "../hooks/useUpdateUserRoleMutation";
+import { useUsersQuery } from "../hooks/useUsersQuery";
 
 import type { User } from "../types/auth";
 import type { AdminUser } from "../types/users";
@@ -16,6 +14,17 @@ function formatRole(role: string): string {
         word.charAt(0).toUpperCase() + word.slice(1),
     )
     .join(" ");
+}
+
+function getErrorMessage(
+  error: unknown,
+  fallback: string,
+): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
 }
 
 function UsersPage() {
@@ -34,10 +43,7 @@ function UsersPage() {
   const canAssignRoles =
     currentUser?.permissions.includes("assign roles") ?? false;
 
-  const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const [editingUser, setEditingUser] =
     useState<AdminUser | null>(null);
@@ -45,30 +51,22 @@ function UsersPage() {
   const [selectedRole, setSelectedRole] =
     useState<"sales" | "team-lead">("sales");
 
-  const [savingRole, setSavingRole] = useState(false);
   const [roleError, setRoleError] = useState("");
 
-  useEffect(() => {
-    async function loadUsers() {
-      try {
-        setError("");
+  const usersQuery = useUsersQuery();
+  const updateRoleMutation =
+    useUpdateUserRoleMutation();
 
-        const data = await getUsers();
+  const users = usersQuery.data ?? [];
+  const loading = usersQuery.isPending;
+  const savingRole = updateRoleMutation.isPending;
 
-        setUsers(data);
-      } catch (error: any) {
-        setError(
-          error.response?.data?.error?.message ??
-            error.response?.data?.message ??
-            "Unable to load users.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    void loadUsers();
-  }, []);
+  const pageError = usersQuery.isError
+    ? getErrorMessage(
+        usersQuery.error,
+        "Unable to load users.",
+      )
+    : "";
 
   const filteredUsers = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -125,32 +123,22 @@ function UsersPage() {
       return;
     }
 
-    setSavingRole(true);
     setRoleError("");
 
     try {
-      const updatedUser = await updateUserRole(
-        editingUser.id,
-        selectedRole,
-      );
-
-      setUsers((currentUsers) =>
-        currentUsers.map((user) =>
-          user.id === updatedUser.id
-            ? updatedUser
-            : user,
-        ),
-      );
+      await updateRoleMutation.mutateAsync({
+        userId: editingUser.id,
+        role: selectedRole,
+      });
 
       setEditingUser(null);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setRoleError(
-        error.response?.data?.error?.message ??
-          error.response?.data?.message ??
+        getErrorMessage(
+          error,
           "Unable to update the user role.",
+        ),
       );
-    } finally {
-      setSavingRole(false);
     }
   }
 
@@ -187,7 +175,9 @@ function UsersPage() {
 
             <p>
               {users.length}{" "}
-              {users.length === 1 ? "account" : "accounts"}
+              {users.length === 1
+                ? "account"
+                : "accounts"}
             </p>
           </div>
 
@@ -208,111 +198,137 @@ function UsersPage() {
           </div>
         )}
 
-        {!loading && error && (
+        {!loading && pageError && (
           <div className="users-state error">
-            {error}
+            <p>{pageError}</p>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                void usersQuery.refetch();
+              }}
+            >
+              Try Again
+            </button>
           </div>
         )}
 
-        {!loading && !error && filteredUsers.length === 0 && (
-          <div className="users-state">
-            No users found.
-          </div>
-        )}
+        {!loading &&
+          !pageError &&
+          filteredUsers.length === 0 && (
+            <div className="users-state">
+              No users found.
+            </div>
+          )}
 
-        {!loading && !error && filteredUsers.length > 0 && (
-          <div className="users-table-wrapper">
-            <table className="users-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Created</th>
+        {!loading &&
+          !pageError &&
+          filteredUsers.length > 0 && (
+            <div className="users-table-wrapper">
+              <table className="users-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Created</th>
 
-                  {(canAssignRoles || canDeleteUsers) && (
-                    <th className="actions-column">
-                      Actions
-                    </th>
-                  )}
-                </tr>
-              </thead>
+                    {(canAssignRoles ||
+                      canDeleteUsers) && (
+                      <th className="actions-column">
+                        Actions
+                      </th>
+                    )}
+                  </tr>
+                </thead>
 
-              <tbody>
-                {filteredUsers.map((user) => {
-                  const isSuperAdmin =
-                    user.roles.includes("super-admin");
+                <tbody>
+                  {filteredUsers.map((user) => {
+                    const isSuperAdmin =
+                      user.roles.includes(
+                        "super-admin",
+                      );
 
-                  return (
-                    <tr key={user.id}>
-                      <td>
-                        <div className="user-cell">
-                          <div className="user-avatar">
-                            {user.name
-                              .charAt(0)
-                              .toUpperCase()}
-                          </div>
-
-                          <div>
-                            <strong>{user.name}</strong>
-                            <span>{user.email}</span>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td>
-                        <span
-                          className={`role-badge role-${
-                            user.roles[0] ?? "none"
-                          }`}
-                        >
-                          {user.roles.length > 0
-                            ? user.roles
-                                .map(formatRole)
-                                .join(", ")
-                            : "No Role"}
-                        </span>
-                      </td>
-
-                      <td>
-                        {new Date(
-                          user.created_at,
-                        ).toLocaleDateString()}
-                      </td>
-
-                      {(canAssignRoles || canDeleteUsers) && (
+                    return (
+                      <tr key={user.id}>
                         <td>
-                          <div className="users-actions">
-                            {canAssignRoles && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openRoleModal(user)
-                                }
-                                disabled={isSuperAdmin}
-                              >
-                                Edit Role
-                              </button>
-                            )}
+                          <div className="user-cell">
+                            <div className="user-avatar">
+                              {user.name
+                                .charAt(0)
+                                .toUpperCase()}
+                            </div>
 
-                            {canDeleteUsers &&
-                              !isSuperAdmin && (
-                                <button
-                                  type="button"
-                                  className="danger"
-                                >
-                                  Delete
-                                </button>
-                              )}
+                            <div>
+                              <strong>
+                                {user.name}
+                              </strong>
+
+                              <span>{user.email}</span>
+                            </div>
                           </div>
                         </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+
+                        <td>
+                          <span
+                            className={`role-badge role-${
+                              user.roles[0] ??
+                              "none"
+                            }`}
+                          >
+                            {user.roles.length > 0
+                              ? user.roles
+                                  .map(formatRole)
+                                  .join(", ")
+                              : "No Role"}
+                          </span>
+                        </td>
+
+                        <td>
+                          {new Date(
+                            user.created_at,
+                          ).toLocaleDateString()}
+                        </td>
+
+                        {(canAssignRoles ||
+                          canDeleteUsers) && (
+                          <td>
+                            <div className="users-actions">
+                              {canAssignRoles && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openRoleModal(
+                                      user,
+                                    )
+                                  }
+                                  disabled={
+                                    isSuperAdmin
+                                  }
+                                >
+                                  Edit Role
+                                </button>
+                              )}
+
+                              {canDeleteUsers &&
+                                !isSuperAdmin && (
+                                  <button
+                                    type="button"
+                                    className="danger"
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
       </section>
 
       {editingUser && canAssignRoles && (
@@ -345,6 +361,7 @@ function UsersPage() {
                 className="modal-close"
                 onClick={closeRoleModal}
                 aria-label="Close"
+                disabled={savingRole}
               >
                 ×
               </button>
@@ -382,8 +399,12 @@ function UsersPage() {
                   )
                 }
                 className="role-select"
+                disabled={savingRole}
               >
-                <option value="sales">Sales</option>
+                <option value="sales">
+                  Sales
+                </option>
+
                 <option value="team-lead">
                   Team Lead
                 </option>
