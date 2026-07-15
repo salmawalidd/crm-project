@@ -1,4 +1,7 @@
-import api from "./api";
+import {
+  get,
+  patch,
+} from "../lib/fetcher";
 
 import type {
   AdminUser,
@@ -12,20 +15,26 @@ type UserResponse = {
   };
 };
 
-export async function getUsers(): Promise<AdminUser[]> {
-  const response = await api.get<UsersResponse>("/users");
+export type UpdateUserRoleData = {
+  userId: number;
+  role: "sales" | "team-lead";
+};
 
-  return response.data.data.users;
+export async function getUsers(): Promise<AdminUser[]> {
+  const response = await get<UsersResponse>("/users");
+
+  return response.data.users;
 }
 
 export async function updateUserRole(
-  userId: number,
-  role: "sales" | "team-lead",
+  data: UpdateUserRoleData,
 ): Promise<AdminUser> {
-  const response = await api.patch<UserResponse>(
-    `/users/${userId}/role`,
-    { role },
-  );
+  const response = await patch<
+    UserResponse,
+    { role: "sales" | "team-lead" }
+  >(`/users/${data.userId}/role`, {
+    role: data.role,
+  });
 
-  return response.data.data.user;
+  return response.data.user;
 }
