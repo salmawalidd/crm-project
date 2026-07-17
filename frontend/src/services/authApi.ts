@@ -1,4 +1,4 @@
-import api from "./api";
+import { post } from "../lib/fetcher";
 
 import type {
   AuthResponse,
@@ -6,28 +6,30 @@ import type {
   RegisterData,
 } from "../types/auth";
 
-export async function login(
+export function login(
   credentials: LoginCredentials,
 ): Promise<AuthResponse> {
-  const response = await api.post<AuthResponse>(
+  return post<AuthResponse, LoginCredentials>(
     "/login",
     credentials,
+    {
+      authenticated: false,
+    },
   );
-
-  return response.data;
 }
 
-export async function register(
+export function register(
   data: RegisterData,
 ): Promise<AuthResponse> {
-  const response = await api.post<AuthResponse>(
+  return post<AuthResponse, RegisterData>(
     "/register",
     data,
+    {
+      authenticated: false,
+    },
   );
-
-  return response.data;
 }
 
-export async function logout(): Promise<void> {
-  await api.post("/logout");
+export function logout(): Promise<void> {
+  return post<void>("/logout");
 }
