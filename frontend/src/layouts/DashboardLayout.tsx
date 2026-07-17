@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
+import { getCurrentTenant } from "../lib/tenant";
 import { logout } from "../services/authApi";
 import type { User } from "../types/auth";
 
@@ -7,6 +8,10 @@ import "../styles/dashboard.css";
 
 function DashboardLayout() {
   const navigate = useNavigate();
+
+  const tenant = getCurrentTenant();
+
+  console.log("Current tenant:", tenant);
 
   const savedUser = localStorage.getItem("user");
 
@@ -50,8 +55,8 @@ function DashboardLayout() {
           <div className="sidebar-logo">⌂━</div>
 
           <div>
-            <strong>KEYSTONE</strong>
-            <span>CRM Workspace</span>
+            <strong>{tenant.logoText}</strong>
+            <span>{tenant.workspaceLabel}</span>
           </div>
         </div>
 
@@ -150,7 +155,7 @@ function DashboardLayout() {
       <main className="dashboard-main">
         <header className="dashboard-topbar">
           <div>
-            <p>CRM Workspace</p>
+            <p>{tenant.workspaceLabel}</p>
 
             <h1>
               Welcome back, {user?.name ?? "User"}
@@ -183,6 +188,7 @@ function DashboardLayout() {
           <Outlet
             context={{
               user,
+              tenant,
               canViewUsers,
               canCreateUsers,
               canManageRoles,

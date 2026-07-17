@@ -1,7 +1,14 @@
 import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 
 import loginBackground from "../assets/login-background.jpg";
+import { ApiError } from "../lib/fetcher";
+import {
+  loginSchema,
+  type LoginFormData,
+} from "../schemas/loginSchema";
 import { login } from "../services/authApi";
 
 import "../styles/auth.css";
@@ -9,30 +16,38 @@ import "../styles/auth.css";
 function LoginPage() {
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("admin@crm.com");
-  const [password, setPassword] = useState("Admin@123");
   const [showPassword, setShowPassword] = useState(false);
-  const [workspace, setWorkspace] = useState<"address" | "marq">(
-    "address",
-  );
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [workspace, setWorkspace] = useState<
+    "address" | "marq"
+  >("address");
+  const [serverError, setServerError] = useState("");
 
-  async function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
+  const {
+    register,
+    handleSubmit,
+    formState: {
+      errors,
+      isSubmitting,
+    },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "admin@crm.com",
+      password: "Admin@123",
+    },
+  });
 
-    setError("");
-    setLoading(true);
+  async function onSubmit(data: LoginFormData) {
+    setServerError("");
 
     try {
-      const response = await login({
-        email,
-        password,
-      });
+      const response = await login(data);
 
-      localStorage.setItem("token", response.data.token);
+      localStorage.setItem(
+        "token",
+        response.data.token,
+      );
+
       localStorage.setItem(
         "user",
         JSON.stringify(response.data.user),
@@ -41,14 +56,13 @@ function LoginPage() {
       navigate("/dashboard", {
         replace: true,
       });
-    } catch (error: any) {
-      setError(
-        error.response?.data?.error?.message ??
-          error.response?.data?.message ??
-          "Unable to sign in.",
-      );
-    } finally {
-      setLoading(false);
+    } catch (error: unknown) {
+      if (error instanceof ApiError) {
+        setServerError(error.message);
+        return;
+      }
+
+      setServerError("Unable to sign in.");
     }
   }
 
@@ -133,21 +147,24 @@ function LoginPage() {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <div className="auth-field">
             <label htmlFor="email">Email</label>
 
             <input
               id="email"
               type="email"
-              value={email}
-              onChange={(event) =>
-                setEmail(event.target.value)
-              }
               placeholder="User@theaddress.com"
               autoComplete="email"
-              required
+              aria-invalid={Boolean(errors.email)}
+              {...register("email")}
             />
+
+            {errors.email && (
+              <p className="field-error">
+                {errors.email.message}
+              </p>
+            )}
           </div>
 
           <div className="auth-field">
@@ -156,21 +173,24 @@ function LoginPage() {
             <div className="password-wrapper">
               <input
                 id="password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(event) =>
-                  setPassword(event.target.value)
+                type={
+                  showPassword
+                    ? "text"
+                    : "password"
                 }
                 placeholder="Enter your password here.."
                 autoComplete="current-password"
-                required
+                aria-invalid={Boolean(errors.password)}
+                {...register("password")}
               />
 
               <button
                 type="button"
                 className="password-toggle"
                 onClick={() =>
-                  setShowPassword((current) => !current)
+                  setShowPassword(
+                    (current) => !current,
+                  )
                 }
                 aria-label={
                   showPassword
@@ -181,6 +201,12 @@ function LoginPage() {
                 {showPassword ? "◉" : "◎"}
               </button>
             </div>
+
+            {errors.password && (
+              <p className="field-error">
+                {errors.password.message}
+              </p>
+            )}
           </div>
 
           <button
@@ -190,21 +216,27 @@ function LoginPage() {
             Forgot Password?
           </button>
 
-          {error && (
-            <p className="auth-error">{error}</p>
+          {serverError && (
+            <p className="auth-error">
+              {serverError}
+            </p>
           )}
 
           <button
             type="submit"
             className="auth-submit"
-            disabled={loading}
+            disabled={isSubmitting}
           >
-            {loading ? "Signing In..." : "Sign In"}
+            {isSubmitting
+              ? "Signing In..."
+              : "Sign In"}
           </button>
 
           <p className="auth-footer">
             Don&apos;t have an account?{" "}
-            <Link to="/register">Create account</Link>
+            <Link to="/register">
+              Create account
+            </Link>
           </p>
         </form>
       </section>
